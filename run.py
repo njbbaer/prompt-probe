@@ -22,13 +22,13 @@ class ApiClient:
         response = await client.post(
             f"{self._BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
-            json={"messages": messages, **params},
+            json={"provider": {"only": ["anthropic"]}, "messages": messages, **params},
         )
         response.raise_for_status()
         data = response.json()
         if "error" in data:
             raise Exception(data["error"])
-        self.total_cost += data["usage"]["cost"]
+        self.total_cost += data["usage"]["cost_details"]["upstream_inference_cost"]
         return data["choices"][0]["message"]["content"]
 
 
