@@ -16,7 +16,9 @@ class ApiClient:
     def __init__(self):
         self.total_cost = 0.0
 
-    async def complete(self, client: httpx.AsyncClient, messages: list, **params) -> str:
+    async def complete(
+        self, client: httpx.AsyncClient, messages: list, **params
+    ) -> str:
         response = await client.post(
             f"{self._BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
@@ -30,9 +32,32 @@ class ApiClient:
         return data["choices"][0]["message"]["content"]
 
 
+def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dict]:
+    def _count_message_tokens(msg: dict) -> int:
+        content = msg["content"]
+        if isinstance(content, list):
+            text = " ".join(part.get("text", "") for part in content)
+        else:
+            text = content
+        return len(text) // 4
+
+    token_count = sum(_count_message_tokens(m) for m in messages[:-1])
+    tokens_needed = min_tokens - token_count
+
+    if tokens_needed <= 0:
+        return messages
+
+    padding = f'<padding ignore="true">\n{"X" * (tokens_needed * 4)}\n</padding>'
+    return [
+        messages[0],
+        {"role": "user", "content": padding},
+        *messages[1:],
+    ]
+
+
 def build_messages(context: dict, attributes: list[str]) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
-    return [
+    messages = [
         {"role": "system", "content": context["system_prompt"]},
         {
             "role": "user",
@@ -46,6 +71,7 @@ def build_messages(context: dict, attributes: list[str]) -> list[dict]:
         },
         {"role": "user", "content": f"Attributes:\n{attributes_list}"},
     ]
+    return _add_cache_padding(messages)
 
 
 def parse_response(response: str) -> dict[str, int]:
@@ -63,7 +89,9 @@ def calc_sem(vals: list[float]) -> float:
     return statistics.stdev(vals) / math.sqrt(len(vals))
 
 
-def compute_diffs(attributes: list[str], results_a: dict, results_b: dict) -> list[tuple]:
+def compute_diffs(
+    attributes: list[str], results_a: dict, results_b: dict
+) -> list[tuple]:
     diffs = []
     for attr in attributes:
         vals_a = results_a[attr]
@@ -86,7 +114,7 @@ def print_results(diffs: list[tuple], model_a: str, model_b: str, total_cost: fl
         val_a_str = f"{mean_a:.1f} ± {sem_a:.2f}"
         val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
-    print(f"\ntotal cost: ${total_cost:.4f}")
+    print(f"\nTotal cost: ${total_cost:.4f}")
 
 
 async def run_comparisons(api: ApiClient, context: dict) -> list[str]:
