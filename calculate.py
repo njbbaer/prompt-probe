@@ -33,27 +33,45 @@ class ApiClient:
         return data["choices"][0]["message"]["content"]
 
 
-def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dict]:
-    def _count_message_tokens(msg: dict) -> int:
-        content = msg["content"]
-        if isinstance(content, list):
-            text = " ".join(part.get("text", "") for part in content)
-        else:
-            text = content
-        return len(text) // 4
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python run.py <config_file>")
+        sys.exit(1)
 
-    token_count = sum(_count_message_tokens(m) for m in messages[:-1])
-    tokens_needed = min_tokens - token_count
+    yaml = YAML()
+    with open(sys.argv[1]) as f:
+        config = yaml.load(f)
 
-    if tokens_needed <= 0:
-        return messages
+    api = ApiClient()
+    responses = asyncio.run(run_comparisons(api, config))
 
-    padding = f'<padding ignore="true">\n{"X" * (tokens_needed * 4)}\n</padding>'
-    return [
-        messages[0],
-        {"role": "user", "content": padding},
-        *messages[1:],
-    ]
+    num_runs = config.get("num_runs", 1)
+    results_a = defaultdict(list)
+    results_b = defaultdict(list)
+    for i in range(num_runs):
+        for attr, val in parse_response(responses[i * 2]).items():
+            results_a[attr].append(val)
+        for attr, val in parse_response(responses[i * 2 + 1]).items():
+            results_b[attr].append(val)
+
+    diffs = compute_diffs(config["attributes"], results_a, results_b)
+    print_results(diffs, config["model_a"], config["model_b"], api.total_cost)
+
+
+async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
+    model_a = config["model_a"]
+    model_b = config["model_b"]
+    num_runs = config.get("num_runs", 1)
+
+    async with httpx.AsyncClient() as client:
+        tasks = []
+        for _ in range(num_runs):
+            shuffled = list(config["attributes"])
+            random.shuffle(shuffled)
+            messages = build_messages(config, shuffled)
+            tasks.append(api.complete(client, messages, model=model_a, temperature=0.0))
+            tasks.append(api.complete(client, messages, model=model_b, temperature=0.0))
+        return await asyncio.gather(*tasks)
 
 
 def build_messages(config: dict, attributes: list[str]) -> list[dict]:
@@ -85,12 +103,6 @@ def parse_response(response: str) -> dict[str, int]:
     return results
 
 
-def calc_sem(vals: list[float]) -> float:
-    if len(vals) < 2:
-        return 0.0
-    return statistics.stdev(vals) / math.sqrt(len(vals))
-
-
 def compute_diffs(
     attributes: list[str], results_a: dict, results_b: dict
 ) -> list[tuple]:
@@ -100,11 +112,11 @@ def compute_diffs(
         vals_b = results_b[attr]
         mean_a = statistics.mean(vals_a) if vals_a else 0
         mean_b = statistics.mean(vals_b) if vals_b else 0
-        sem_a = calc_sem(vals_a)
-        sem_b = calc_sem(vals_b)
+        sem_a = _calc_sem(vals_a)
+        sem_b = _calc_sem(vals_b)
         paired_diffs = [b - a for a, b in zip(vals_a, vals_b)]
         mean_diff = statistics.mean(paired_diffs) if paired_diffs else 0
-        sem_diff = calc_sem(paired_diffs)
+        sem_diff = _calc_sem(paired_diffs)
         diffs.append((attr, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
     diffs.sort(key=lambda x: abs(x[5]), reverse=True)
     return diffs
@@ -121,45 +133,33 @@ def print_results(diffs: list[tuple], model_a: str, model_b: str, total_cost: fl
     print(f"\nTotal cost: ${total_cost:.4f}")
 
 
-async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
-    model_a = config["model_a"]
-    model_b = config["model_b"]
-    num_runs = config.get("num_runs", 1)
-
-    async with httpx.AsyncClient() as client:
-        tasks = []
-        for _ in range(num_runs):
-            shuffled = list(config["attributes"])
-            random.shuffle(shuffled)
-            messages = build_messages(config, shuffled)
-            tasks.append(api.complete(client, messages, model=model_a, temperature=0.0))
-            tasks.append(api.complete(client, messages, model=model_b, temperature=0.0))
-        return await asyncio.gather(*tasks)
+def _calc_sem(vals: list[float]) -> float:
+    if len(vals) < 2:
+        return 0.0
+    return statistics.stdev(vals) / math.sqrt(len(vals))
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python run.py <config_file>")
-        sys.exit(1)
+def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dict]:
+    def _count_message_tokens(msg: dict) -> int:
+        content = msg["content"]
+        if isinstance(content, list):
+            text = " ".join(part.get("text", "") for part in content)
+        else:
+            text = content
+        return len(text) // 4
 
-    yaml = YAML()
-    with open(sys.argv[1]) as f:
-        config = yaml.load(f)
+    token_count = sum(_count_message_tokens(m) for m in messages[:-1])
+    tokens_needed = min_tokens - token_count
 
-    api = ApiClient()
-    responses = asyncio.run(run_comparisons(api, config))
+    if tokens_needed <= 0:
+        return messages
 
-    num_runs = config.get("num_runs", 1)
-    results_a = defaultdict(list)
-    results_b = defaultdict(list)
-    for i in range(num_runs):
-        for attr, val in parse_response(responses[i * 2]).items():
-            results_a[attr].append(val)
-        for attr, val in parse_response(responses[i * 2 + 1]).items():
-            results_b[attr].append(val)
-
-    diffs = compute_diffs(config["attributes"], results_a, results_b)
-    print_results(diffs, config["model_a"], config["model_b"], api.total_cost)
+    padding = f'<padding ignore="true">\n{"X" * (tokens_needed * 4)}\n</padding>'
+    return [
+        messages[0],
+        {"role": "user", "content": padding},
+        *messages[1:],
+    ]
 
 
 if __name__ == "__main__":
