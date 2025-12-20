@@ -77,10 +77,8 @@ async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
             tasks.append(api.complete(client, messages, model=model_a, temperature=0.0))
             tasks.append(api.complete(client, messages, model=model_b, temperature=0.0))
 
-        if warm_cache and tasks:
-            first = await tasks[0]
-            rest = await tqdm_asyncio.gather(*tasks[1:])
-            return [first] + list(rest)
+        if warm_cache:
+            return await _gather_with_warm_cache(tasks)
         return await tqdm_asyncio.gather(*tasks)
 
 
@@ -105,7 +103,7 @@ def build_messages(config: dict, attributes: list[str]) -> list[dict]:
 
 def parse_response(response: str) -> dict[str, int]:
     results = {}
-    pattern = re.compile(r'^(.+?):\s*(-?\d+)$')
+    pattern = re.compile(r"^(.+?):\s*(-?\d+)$")
     for line in response.strip().split("\n"):
         if not (match := pattern.match(line.strip())):
             raise ValueError(f"Unable to parse line: '{line}'")
@@ -165,6 +163,20 @@ def plot_results(diffs: list[tuple], model_a: str, model_b: str):
     plt.tight_layout()
     plt.savefig("results.png", dpi=150)
     print("\nChart saved to results.png")
+
+
+async def _gather_with_warm_cache(tasks):
+    with tqdm_asyncio(total=len(tasks)) as pbar:
+
+        async def track(coro):
+            result = await coro
+            pbar.update(1)
+            return result
+
+        tracked = [track(t) for t in tasks]
+        first = await asyncio.gather(*tracked[:2])
+        rest = await asyncio.gather(*tracked[2:])
+    return list(first) + list(rest)
 
 
 def _calc_sem(vals: list[float]) -> float:
