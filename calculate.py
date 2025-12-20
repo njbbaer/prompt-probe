@@ -2,6 +2,7 @@ import asyncio
 import math
 import os
 import random
+import re
 import statistics
 import sys
 from collections import defaultdict
@@ -76,10 +77,11 @@ def build_messages(config: dict, attributes: list[str]) -> list[dict]:
 
 def parse_response(response: str) -> dict[str, int]:
     results = {}
+    pattern = re.compile(r'^(.+?):\s*(-?\d+)$')
     for line in response.strip().split("\n"):
-        if ":" in line:
-            attr, val = line.split(":", 1)
-            results[attr.strip()] = int(val.strip())
+        if not (match := pattern.match(line.strip())):
+            raise ValueError(f"Unable to parse line: '{line}'")
+        results[match.group(1).strip()] = int(match.group(2))
     return results
 
 
