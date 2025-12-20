@@ -44,7 +44,9 @@ def main():
         config = yaml.load(f)
 
     api = ApiClient()
-    responses = asyncio.run(run_comparisons(api, config))
+    variant_a = config["variant_a"]
+    variant_b = config["variant_b"]
+    responses = asyncio.run(run_comparisons(api, config, variant_a, variant_b))
 
     num_runs = config.get("num_runs", 1)
     results_a = defaultdict(list)
@@ -56,31 +58,35 @@ def main():
             results_b[attr].append(val)
 
     diffs = compute_diffs(config["attributes"], results_a, results_b)
-    print_results(diffs, config["model_a"], config["model_b"], api.total_cost)
+    print_results(diffs, variant_a, variant_b, api.total_cost)
 
 
-async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
-    model_a = config["model_a"]
-    model_b = config["model_b"]
+async def run_comparisons(
+    api: ApiClient, config: dict, variant_a: dict, variant_b: dict
+) -> list[str]:
     num_runs = config.get("num_runs", 1)
     warm_cache = config.get("warm_cache", False)
+    params_a = _variant_params(variant_a)
+    params_b = _variant_params(variant_b)
 
     async with httpx.AsyncClient() as client:
         tasks = []
         for _ in range(num_runs):
             shuffled = list(config["attributes"])
             random.shuffle(shuffled)
-            messages = build_messages(config, shuffled)
-            tasks.append(api.complete(client, messages, model=model_a, temperature=0.0))
-            tasks.append(api.complete(client, messages, model=model_b, temperature=0.0))
+            messages_a = build_messages(config, shuffled, variant_a)
+            messages_b = build_messages(config, shuffled, variant_b)
+            tasks.append(api.complete(client, messages_a, **params_a, temperature=0.0))
+            tasks.append(api.complete(client, messages_b, **params_b, temperature=0.0))
 
         if warm_cache:
             return await _gather_with_warm_cache(tasks)
         return await tqdm_asyncio.gather(*tasks)
 
 
-def build_messages(config: dict, attributes: list[str]) -> list[dict]:
+def build_messages(config: dict, attributes: list[str], variant: dict) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
+    character_description = variant.get("character_description", config.get("character_description", ""))
     messages = [
         {"role": "system", "content": config["system_prompt"]},
         {
@@ -88,7 +94,7 @@ def build_messages(config: dict, attributes: list[str]) -> list[dict]:
             "content": [
                 {
                     "type": "text",
-                    "text": config["character_description"],
+                    "text": character_description,
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -127,8 +133,12 @@ def compute_diffs(
     return diffs
 
 
-def print_results(diffs: list[tuple], model_a: str, model_b: str, total_cost: float):
-    print(f"{'Attribute':<25} {'Diff':<15} {model_a:<20} {model_b:<20}")
+def print_results(
+    diffs: list[tuple], variant_a: dict, variant_b: dict, total_cost: float
+):
+    label_a = _variant_label(variant_a)
+    label_b = _variant_label(variant_b)
+    print(f"{'Attribute':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
     print("-" * 80)
     for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
         diff_str = f"{diff:+.1f} ± {sem_diff:.2f}"
@@ -136,6 +146,15 @@ def print_results(diffs: list[tuple], model_a: str, model_b: str, total_cost: fl
         val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     print(f"\nTotal cost: ${total_cost:.4f}")
+
+
+def _variant_label(variant: dict) -> str:
+    return variant.get("label") or variant.get("model", "unknown")
+
+
+def _variant_params(variant: dict) -> dict:
+    exclude = {"label", "character_description"}
+    return {k: v for k, v in variant.items() if k not in exclude}
 
 
 async def _gather_with_warm_cache(tasks):
