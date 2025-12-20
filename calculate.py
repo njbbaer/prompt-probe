@@ -157,7 +157,7 @@ def plot_results(diffs: list[tuple], model_a: str, model_b: str):
         label_type="center",
         color="white",
         fontweight="bold",
-        path_effects=[pe.withStroke(linewidth=2, foreground="black")],
+        path_effects=[pe.withStroke(linewidth=1, foreground="black")],
     )
     ax.axvline(0, color="black", linewidth=0.8)
     ax.set_xlabel(f"← {model_a}    Difference    {model_b} →")
