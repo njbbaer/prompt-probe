@@ -102,8 +102,10 @@ def compute_diffs(
         mean_b = statistics.mean(vals_b) if vals_b else 0
         sem_a = calc_sem(vals_a)
         sem_b = calc_sem(vals_b)
-        sem_diff = math.sqrt(sem_a**2 + sem_b**2)
-        diffs.append((attr, mean_a, sem_a, mean_b, sem_b, mean_b - mean_a, sem_diff))
+        paired_diffs = [b - a for a, b in zip(vals_a, vals_b)]
+        mean_diff = statistics.mean(paired_diffs) if paired_diffs else 0
+        sem_diff = calc_sem(paired_diffs)
+        diffs.append((attr, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
     diffs.sort(key=lambda x: abs(x[5]), reverse=True)
     return diffs
 
