@@ -8,8 +8,6 @@ import sys
 from collections import defaultdict
 
 import httpx
-import matplotlib.patheffects as pe
-import matplotlib.pyplot as plt
 from ruamel.yaml import YAML
 from tqdm.asyncio import tqdm_asyncio
 
@@ -59,7 +57,6 @@ def main():
 
     diffs = compute_diffs(config["attributes"], results_a, results_b)
     print_results(diffs, config["model_a"], config["model_b"], api.total_cost)
-    plot_results(diffs, config["model_a"], config["model_b"])
 
 
 async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
@@ -139,30 +136,6 @@ def print_results(diffs: list[tuple], model_a: str, model_b: str, total_cost: fl
         val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     print(f"\nTotal cost: ${total_cost:.4f}")
-
-
-def plot_results(diffs: list[tuple], model_a: str, model_b: str):
-    attrs = [d[0] for d in reversed(diffs)]
-    diff_vals = [d[5] for d in reversed(diffs)]
-    sem_vals = [d[6] for d in reversed(diffs)]
-    colors = ["#2ecc71" if d > 0 else "#e74c3c" for d in diff_vals]
-
-    _, ax = plt.subplots(figsize=(10, max(6, len(attrs) * 0.4)))
-    bars = ax.barh(attrs, diff_vals, xerr=sem_vals, color=colors, capsize=3, alpha=0.8)
-    ax.bar_label(
-        bars,
-        fmt="%+.1f",
-        label_type="center",
-        color="white",
-        fontweight="bold",
-        path_effects=[pe.withStroke(linewidth=1, foreground="black")],
-    )
-    ax.axvline(0, color="black", linewidth=0.8)
-    ax.set_xlabel(f"← {model_a}    Difference    {model_b} →")
-    ax.set_title(f"Model Comparison: {model_a} vs {model_b}")
-    plt.tight_layout()
-    plt.savefig("results.png", dpi=150)
-    print("\nChart saved to results.png")
 
 
 async def _gather_with_warm_cache(tasks):
