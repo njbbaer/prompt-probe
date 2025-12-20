@@ -26,7 +26,7 @@ class ApiClient:
         response = await client.post(
             f"{self._BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
-            json={"provider": {"only": ["anthropic"]}, "messages": messages, **params},
+            json={"provider": {"order": ["anthropic"]}, "messages": messages, **params},
         )
         response.raise_for_status()
         data = response.json()
