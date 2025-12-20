@@ -55,16 +55,16 @@ def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dic
     ]
 
 
-def build_messages(context: dict, attributes: list[str]) -> list[dict]:
+def build_messages(config: dict, attributes: list[str]) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
     messages = [
-        {"role": "system", "content": context["system_prompt"]},
+        {"role": "system", "content": config["system_prompt"]},
         {
             "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": context["character_description"],
+                    "text": config["character_description"],
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -117,17 +117,17 @@ def print_results(diffs: list[tuple], model_a: str, model_b: str, total_cost: fl
     print(f"\nTotal cost: ${total_cost:.4f}")
 
 
-async def run_comparisons(api: ApiClient, context: dict) -> list[str]:
-    model_a = context["model_a"]
-    model_b = context["model_b"]
-    num_runs = context.get("num_runs", 1)
+async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
+    model_a = config["model_a"]
+    model_b = config["model_b"]
+    num_runs = config.get("num_runs", 1)
 
     async with httpx.AsyncClient() as client:
         tasks = []
         for _ in range(num_runs):
-            shuffled = list(context["attributes"])
+            shuffled = list(config["attributes"])
             random.shuffle(shuffled)
-            messages = build_messages(context, shuffled)
+            messages = build_messages(config, shuffled)
             tasks.append(api.complete(client, messages, model=model_a, temperature=0.0))
             tasks.append(api.complete(client, messages, model=model_b, temperature=0.0))
         return await asyncio.gather(*tasks)
@@ -135,17 +135,17 @@ async def run_comparisons(api: ApiClient, context: dict) -> list[str]:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python run.py <context_file>")
+        print("Usage: python run.py <config_file>")
         sys.exit(1)
 
     yaml = YAML()
     with open(sys.argv[1]) as f:
-        context = yaml.load(f)
+        config = yaml.load(f)
 
     api = ApiClient()
-    responses = asyncio.run(run_comparisons(api, context))
+    responses = asyncio.run(run_comparisons(api, config))
 
-    num_runs = context.get("num_runs", 1)
+    num_runs = config.get("num_runs", 1)
     results_a = defaultdict(list)
     results_b = defaultdict(list)
     for i in range(num_runs):
@@ -154,8 +154,8 @@ def main():
         for attr, val in parse_response(responses[i * 2 + 1]).items():
             results_b[attr].append(val)
 
-    diffs = compute_diffs(context["attributes"], results_a, results_b)
-    print_results(diffs, context["model_a"], context["model_b"], api.total_cost)
+    diffs = compute_diffs(config["attributes"], results_a, results_b)
+    print_results(diffs, config["model_a"], config["model_b"], api.total_cost)
 
 
 if __name__ == "__main__":
