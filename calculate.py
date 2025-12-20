@@ -9,6 +9,7 @@ from collections import defaultdict
 
 import httpx
 from ruamel.yaml import YAML
+from tqdm.asyncio import tqdm_asyncio
 
 
 class ApiClient:
@@ -75,9 +76,9 @@ async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
 
         if warm_cache and tasks:
             first = await tasks[0]
-            rest = await asyncio.gather(*tasks[1:])
+            rest = await tqdm_asyncio.gather(*tasks[1:])
             return [first] + list(rest)
-        return await asyncio.gather(*tasks)
+        return await tqdm_asyncio.gather(*tasks)
 
 
 def build_messages(config: dict, attributes: list[str]) -> list[dict]:
