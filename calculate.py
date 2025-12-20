@@ -86,7 +86,9 @@ async def run_comparisons(
 
 def build_messages(config: dict, attributes: list[str], variant: dict) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
-    character_description = variant.get("character_description", config.get("character_description", ""))
+    character_description = variant.get(
+        "character_description", config.get("character_description", "")
+    )
     messages = [
         {"role": "system", "content": config["system_prompt"]},
         {
@@ -136,8 +138,8 @@ def compute_diffs(
 def print_results(
     diffs: list[tuple], variant_a: dict, variant_b: dict, total_cost: float
 ):
-    label_a = _variant_label(variant_a)
-    label_b = _variant_label(variant_b)
+    label_a = variant_a.get("label", "Variant A")
+    label_b = variant_b.get("label", "Variant B")
     print(f"{'Attribute':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
     print("-" * 80)
     for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
@@ -146,10 +148,6 @@ def print_results(
         val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     print(f"\nTotal cost: ${total_cost:.4f}")
-
-
-def _variant_label(variant: dict) -> str:
-    return variant.get("label") or variant.get("model", "unknown")
 
 
 def _variant_params(variant: dict) -> dict:
