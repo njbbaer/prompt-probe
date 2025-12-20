@@ -5,6 +5,7 @@ import random
 import re
 import statistics
 import sys
+import backoff
 from collections import defaultdict
 
 import httpx
@@ -18,6 +19,7 @@ class ApiClient:
     def __init__(self):
         self.total_cost = 0.0
 
+    @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
     async def complete(
         self, client: httpx.AsyncClient, messages: list, **params
     ) -> str:
