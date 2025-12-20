@@ -76,8 +76,10 @@ async def run_comparisons(
         for _ in range(num_runs):
             shuffled = list(config["attributes"])
             random.shuffle(shuffled)
-            messages_a = build_messages(config, shuffled, variant_a)
-            messages_b = build_messages(config, shuffled, variant_b)
+            cache_ttl_a = variant_a.get("cache_ttl", config.get("cache_ttl"))
+            cache_ttl_b = variant_b.get("cache_ttl", config.get("cache_ttl"))
+            messages_a = build_messages(config, shuffled, variant_a, cache_ttl_a)
+            messages_b = build_messages(config, shuffled, variant_b, cache_ttl_b)
             tasks.append(api.complete(client, messages_a, **params_a, temperature=0.0))
             tasks.append(api.complete(client, messages_b, **params_b, temperature=0.0))
 
@@ -86,11 +88,16 @@ async def run_comparisons(
         return await tqdm_asyncio.gather(*tasks)
 
 
-def build_messages(config: dict, attributes: list[str], variant: dict) -> list[dict]:
+def build_messages(
+    config: dict, attributes: list[str], variant: dict, cache_ttl: int | None = None
+) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
     character_description = variant.get(
         "character_description", config.get("character_description", "")
     )
+    cache_control = {"type": "ephemeral"}
+    if cache_ttl is not None:
+        cache_control["ttl"] = cache_ttl
     messages = [
         {"role": "system", "content": config["system_prompt"]},
         {
@@ -99,7 +106,7 @@ def build_messages(config: dict, attributes: list[str], variant: dict) -> list[d
                 {
                     "type": "text",
                     "text": character_description,
-                    "cache_control": {"type": "ephemeral"},
+                    "cache_control": cache_control,
                 }
             ],
         },
@@ -153,7 +160,7 @@ def print_results(
 
 
 def _variant_params(variant: dict) -> dict:
-    exclude = {"label", "character_description"}
+    exclude = {"label", "character_description", "cache_ttl"}
     return {k: v for k, v in variant.items() if k not in exclude}
 
 
