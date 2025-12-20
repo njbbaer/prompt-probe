@@ -62,6 +62,7 @@ async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
     model_a = config["model_a"]
     model_b = config["model_b"]
     num_runs = config.get("num_runs", 1)
+    warm_cache = config.get("warm_cache", False)
 
     async with httpx.AsyncClient() as client:
         tasks = []
@@ -71,6 +72,11 @@ async def run_comparisons(api: ApiClient, config: dict) -> list[str]:
             messages = build_messages(config, shuffled)
             tasks.append(api.complete(client, messages, model=model_a, temperature=0.0))
             tasks.append(api.complete(client, messages, model=model_b, temperature=0.0))
+
+        if warm_cache and tasks:
+            first = await tasks[0]
+            rest = await asyncio.gather(*tasks[1:])
+            return [first] + list(rest)
         return await asyncio.gather(*tasks)
 
 
