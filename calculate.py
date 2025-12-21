@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import math
 import os
 import random
@@ -174,6 +175,27 @@ def print_results(
         f"\nCost: ${total:.4f} "
         f"(${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
     )
+    _save_csv(diffs, label_a, label_b)
+
+
+def _save_csv(diffs: list[tuple], label_a: str, label_b: str):
+    output_path = Path(sys.argv[1]).with_suffix(".csv")
+    with open(output_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "attribute",
+                "diff",
+                "diff_sem",
+                f"{label_a}_mean",
+                f"{label_a}_sem",
+                f"{label_b}_mean",
+                f"{label_b}_sem",
+            ]
+        )
+        for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
+            writer.writerow([attr, diff, sem_diff, mean_a, sem_a, mean_b, sem_b])
+    print(f"Results saved to {output_path}")
 
 
 def _variant_params(variant: dict) -> dict:
