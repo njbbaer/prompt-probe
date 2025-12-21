@@ -11,3 +11,33 @@ dependencies = [
     "ruamel-yaml>=0.18.17",
     "tqdm>=4.67.1",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+    "ruff>=0.14.10",
+    "types-tqdm>=4.67.0.20250809",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "RUF",   # ruff-specific rules
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "ASYNC", # flake8-async
+    "RET",   # flake8-return
+    "TC",    # flake8-type-checking
+    "ARG",   # flake8-unused-arguments
+]

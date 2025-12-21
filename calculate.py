@@ -5,10 +5,10 @@ import random
 import re
 import statistics
 import sys
-import backoff
 from collections import defaultdict
 from pathlib import Path
 
+import backoff
 import httpx
 from jinja2 import Environment
 from ruamel.yaml import YAML
@@ -98,7 +98,7 @@ async def run_comparisons(
 
 
 def build_messages(
-    config: dict, attributes: list[str], variant: dict, cache_ttl: int | None = None
+    config: dict, attributes: list[str], variant: dict, cache_ttl: str | None = None
 ) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
     character_description = _render_template(
@@ -145,7 +145,7 @@ def compute_diffs(
         mean_b = statistics.mean(vals_b) if vals_b else 0
         sem_a = _calc_sem(vals_a)
         sem_b = _calc_sem(vals_b)
-        paired_diffs = [b - a for a, b in zip(vals_a, vals_b)]
+        paired_diffs = [b - a for a, b in zip(vals_a, vals_b, strict=False)]
         mean_diff = statistics.mean(paired_diffs) if paired_diffs else 0
         sem_diff = _calc_sem(paired_diffs)
         diffs.append((attr, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
@@ -171,7 +171,8 @@ def print_results(
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     total = prompt_cost + completion_cost
     print(
-        f"\nCost: ${total:.4f} (${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
+        f"\nCost: ${total:.4f} "
+        f"(${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
     )
 
 
