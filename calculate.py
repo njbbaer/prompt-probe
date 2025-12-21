@@ -17,7 +17,8 @@ class ApiClient:
     _BASE_URL = "https://openrouter.ai/api/v1"
 
     def __init__(self):
-        self.total_cost = 0.0
+        self.prompt_cost = 0.0
+        self.completion_cost = 0.0
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
     async def complete(
@@ -32,7 +33,8 @@ class ApiClient:
         data = response.json()
         if "error" in data:
             raise Exception(data["error"])
-        self.total_cost += data["usage"]["cost_details"]["upstream_inference_cost"]
+        self.prompt_cost += data["usage"]["cost_details"]["upstream_inference_prompt_cost"]
+        self.completion_cost += data["usage"]["cost_details"]["upstream_inference_completions_cost"]
         return data["choices"][0]["message"]["content"]
 
 
@@ -60,7 +62,7 @@ def main():
             results_b[attr].append(val)
 
     diffs = compute_diffs(config["attributes"], results_a, results_b)
-    print_results(diffs, variant_a, variant_b, api.total_cost)
+    print_results(diffs, variant_a, variant_b, api.prompt_cost, api.completion_cost)
 
 
 async def run_comparisons(
@@ -145,7 +147,7 @@ def compute_diffs(
 
 
 def print_results(
-    diffs: list[tuple], variant_a: dict, variant_b: dict, total_cost: float
+    diffs: list[tuple], variant_a: dict, variant_b: dict, prompt_cost: float, completion_cost: float
 ):
     label_a = variant_a.get("label", "Variant A")
     label_b = variant_b.get("label", "Variant B")
@@ -156,7 +158,8 @@ def print_results(
         val_a_str = f"{mean_a:.1f} ± {sem_a:.2f}"
         val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
-    print(f"\nTotal cost: ${total_cost:.4f}")
+    total = prompt_cost + completion_cost
+    print(f"\nCost: ${total:.4f} (${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)")
 
 
 def _variant_params(variant: dict) -> dict:
