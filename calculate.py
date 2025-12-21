@@ -54,8 +54,9 @@ def main():
         config = yaml.load(f)
 
     api = ApiClient()
-    variant_a = config["variant_a"]
-    variant_b = config["variant_b"]
+    defaults = config.get("default", {})
+    variant_a = {**defaults, **config["variant_a"]}
+    variant_b = {**defaults, **config["variant_b"]}
     responses = asyncio.run(run_comparisons(api, config, variant_a, variant_b))
 
     num_runs = config.get("num_runs", 1)
