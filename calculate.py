@@ -1,5 +1,4 @@
 import asyncio
-import csv
 import math
 import os
 import random
@@ -70,7 +69,9 @@ def main():
             results_b[attr].append(val)
 
     diffs = compute_diffs(config["attributes"], results_a, results_b)
-    print_results(diffs, variant_a, variant_b, api.prompt_cost, api.completion_cost)
+    print_results(
+        diffs, variant_a, variant_b, num_runs, api.prompt_cost, api.completion_cost
+    )
 
 
 async def run_comparisons(
@@ -158,6 +159,7 @@ def print_results(
     diffs: list[tuple],
     variant_a: dict,
     variant_b: dict,
+    num_runs: int,
     prompt_cost: float,
     completion_cost: float,
 ):
@@ -175,26 +177,40 @@ def print_results(
         f"\nCost: ${total:.4f} "
         f"(${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
     )
-    _save_csv(diffs, label_a, label_b)
+    _save_results(diffs, label_a, label_b, num_runs, prompt_cost, completion_cost)
 
 
-def _save_csv(diffs: list[tuple], label_a: str, label_b: str):
-    output_path = Path(sys.argv[1]).with_suffix(".csv")
-    with open(output_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                "attribute",
-                "diff",
-                "diff_sem",
-                f"{label_a}_mean",
-                f"{label_a}_sem",
-                f"{label_b}_mean",
-                f"{label_b}_sem",
-            ]
-        )
-        for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
-            writer.writerow([attr, diff, sem_diff, mean_a, sem_a, mean_b, sem_b])
+def _save_results(
+    diffs: list[tuple],
+    label_a: str,
+    label_b: str,
+    num_runs: int,
+    prompt_cost: float,
+    completion_cost: float,
+):
+    output_path = Path(sys.argv[1]).with_suffix(".results.yml")
+    results = {
+        "num_runs": num_runs,
+        "variants": [label_a, label_b],
+        "cost": {
+            "prompt": prompt_cost,
+            "completion": completion_cost,
+            "total": prompt_cost + completion_cost,
+        },
+        "attributes": [
+            {
+                "name": attr,
+                "diff": {"mean": diff, "sem": sem_diff},
+                label_a: {"mean": mean_a, "sem": sem_a},
+                label_b: {"mean": mean_b, "sem": sem_b},
+            }
+            for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs
+        ],
+    }
+    yaml = YAML()
+    yaml.default_flow_style = False
+    with open(output_path, "w") as f:
+        yaml.dump(results, f)
     print(f"Results saved to {output_path}")
 
 
