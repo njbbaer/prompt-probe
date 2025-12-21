@@ -7,8 +7,10 @@ import statistics
 import sys
 import backoff
 from collections import defaultdict
+from pathlib import Path
 
 import httpx
+from jinja2 import Environment
 from ruamel.yaml import YAML
 from tqdm.asyncio import tqdm_asyncio
 
@@ -33,8 +35,12 @@ class ApiClient:
         data = response.json()
         if "error" in data:
             raise Exception(data["error"])
-        self.prompt_cost += data["usage"]["cost_details"]["upstream_inference_prompt_cost"]
-        self.completion_cost += data["usage"]["cost_details"]["upstream_inference_completions_cost"]
+        self.prompt_cost += data["usage"]["cost_details"][
+            "upstream_inference_prompt_cost"
+        ]
+        self.completion_cost += data["usage"]["cost_details"][
+            "upstream_inference_completions_cost"
+        ]
         return data["choices"][0]["message"]["content"]
 
 
@@ -94,8 +100,8 @@ def build_messages(
     config: dict, attributes: list[str], variant: dict, cache_ttl: int | None = None
 ) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
-    character_description = variant.get(
-        "character_description", config.get("character_description", "")
+    character_description = _render_template(
+        variant.get("character_description", config.get("character_description", ""))
     )
     cache_control = {"type": "ephemeral"}
     if cache_ttl is not None:
@@ -147,7 +153,11 @@ def compute_diffs(
 
 
 def print_results(
-    diffs: list[tuple], variant_a: dict, variant_b: dict, prompt_cost: float, completion_cost: float
+    diffs: list[tuple],
+    variant_a: dict,
+    variant_b: dict,
+    prompt_cost: float,
+    completion_cost: float,
 ):
     label_a = variant_a.get("label", "Variant A")
     label_b = variant_b.get("label", "Variant B")
@@ -159,7 +169,9 @@ def print_results(
         val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     total = prompt_cost + completion_cost
-    print(f"\nCost: ${total:.4f} (${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)")
+    print(
+        f"\nCost: ${total:.4f} (${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
+    )
 
 
 def _variant_params(variant: dict) -> dict:
@@ -185,6 +197,12 @@ def _calc_sem(vals: list[float]) -> float:
     if len(vals) < 2:
         return 0.0
     return statistics.stdev(vals) / math.sqrt(len(vals))
+
+
+def _render_template(text: str) -> str:
+    env = Environment()
+    env.globals["load"] = lambda path: Path(path).read_text()
+    return env.from_string(text).render()
 
 
 def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dict]:
