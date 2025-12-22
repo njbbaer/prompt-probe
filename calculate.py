@@ -6,6 +6,7 @@ import random
 import re
 import statistics
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,15 +22,14 @@ from tqdm.asyncio import tqdm_asyncio
 class ApiClient:
     _BASE_URL = "https://openrouter.ai/api/v1"
 
-    def __init__(self):
+    def __init__(self, client: httpx.AsyncClient):
+        self._client = client
         self.prompt_cost = 0.0
         self.completion_cost = 0.0
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
-    async def complete(
-        self, client: httpx.AsyncClient, messages: list, **params
-    ) -> tuple[str, bool]:
-        response = await client.post(
+    async def complete(self, messages: list, **params) -> tuple[str, bool]:
+        response = await self._client.post(
             f"{self._BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
             json={"provider": {"order": ["anthropic"]}, "messages": messages, **params},
@@ -47,6 +47,12 @@ class ApiClient:
                 "upstream_inference_completions_cost"
             ]
         return data["choices"][0]["message"]["content"], from_cache
+
+    @classmethod
+    @asynccontextmanager
+    async def create(cls):
+        async with _create_cached_client() as client:
+            yield cls(client)
 
 
 @dataclass
@@ -90,8 +96,7 @@ def main():
         data["num_runs"] = 1
 
     config = Config.from_dict(data)
-    api = ApiClient()
-    responses = asyncio.run(run_comparisons(api, config))
+    responses, api = asyncio.run(run_comparisons(config))
 
     results_a = defaultdict(list)
     results_b = defaultdict(list)
@@ -118,11 +123,11 @@ def main():
         print(f"Canary mode: deleted {output_path}")
 
 
-async def run_comparisons(api: ApiClient, config: Config) -> list[str]:
+async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
     params_a = _variant_params(config.variant_a)
     params_b = _variant_params(config.variant_b)
 
-    async with _create_cached_client() as client:
+    async with ApiClient.create() as api:
         tasks = []
         for i in range(config.num_runs):
             rng = random.Random(config.seed + i)
@@ -130,10 +135,10 @@ async def run_comparisons(api: ApiClient, config: Config) -> list[str]:
             rng.shuffle(shuffled)
             messages_a = build_messages(config, shuffled, config.variant_a)
             messages_b = build_messages(config, shuffled, config.variant_b)
-            tasks.append(api.complete(client, messages_a, **params_a, temperature=0.0))
-            tasks.append(api.complete(client, messages_b, **params_b, temperature=0.0))
+            tasks.append(api.complete(messages_a, **params_a, temperature=0.0))
+            tasks.append(api.complete(messages_b, **params_b, temperature=0.0))
 
-        return await _gather_with_warm_cache(tasks)
+        return await _gather_with_warm_cache(tasks), api
 
 
 def build_messages(config: Config, attributes: list[str], variant: dict) -> list[dict]:
