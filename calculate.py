@@ -1,10 +1,10 @@
+import argparse
 import asyncio
 import math
 import os
 import random
 import re
 import statistics
-import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -48,13 +48,22 @@ class ApiClient:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python run.py <config_file>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config_file", help="Path to the config file")
+    parser.add_argument(
+        "-c",
+        "--canary",
+        action="store_true",
+        help="Run single iteration and delete output",
+    )
+    args = parser.parse_args()
 
     yaml = YAML()
-    with open(sys.argv[1]) as f:
+    with open(args.config_file) as f:
         config = yaml.load(f)
+
+    if args.canary:
+        config["num_runs"] = 1
 
     api = ApiClient()
     defaults = config.get("default", {})
@@ -72,9 +81,20 @@ def main():
             results_b[attr].append(val)
 
     diffs = compute_diffs(config["attributes"], results_a, results_b)
-    print_results(
-        diffs, variant_a, variant_b, num_runs, api.prompt_cost, api.completion_cost
+    config_path = Path(args.config_file)
+    output_path = print_results(
+        diffs,
+        variant_a,
+        variant_b,
+        num_runs,
+        api.prompt_cost,
+        api.completion_cost,
+        config_path,
     )
+
+    if args.canary and output_path.exists():
+        output_path.unlink()
+        print(f"Canary mode: deleted {output_path}")
 
 
 async def run_comparisons(
@@ -167,7 +187,8 @@ def print_results(
     num_runs: int,
     prompt_cost: float,
     completion_cost: float,
-):
+    config_path: Path,
+) -> Path:
     label_a = variant_a.get("label", "Variant A")
     label_b = variant_b.get("label", "Variant B")
     print(f"{'Attribute':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
@@ -182,7 +203,9 @@ def print_results(
         f"\nCost: ${total:.4f} "
         f"(${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
     )
-    _save_results(diffs, label_a, label_b, num_runs, prompt_cost, completion_cost)
+    return _save_results(
+        diffs, label_a, label_b, num_runs, prompt_cost, completion_cost, config_path
+    )
 
 
 def _save_results(
@@ -192,8 +215,9 @@ def _save_results(
     num_runs: int,
     prompt_cost: float,
     completion_cost: float,
-):
-    output_path = Path(sys.argv[1]).with_suffix(".results.yml")
+    config_path: Path,
+) -> Path:
+    output_path = config_path.with_suffix(".results.yml")
     results = {
         "num_runs": num_runs,
         "variants": [label_a, label_b],
@@ -217,6 +241,7 @@ def _save_results(
     with open(output_path, "w") as f:
         yaml.dump(results, f)
     print(f"Results saved to {output_path}")
+    return output_path
 
 
 def _variant_params(variant: dict) -> dict:
