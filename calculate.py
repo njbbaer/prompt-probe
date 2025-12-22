@@ -101,7 +101,6 @@ async def run_comparisons(
     api: ApiClient, config: dict, variant_a: dict, variant_b: dict
 ) -> list[str]:
     num_runs = config.get("num_runs", 1)
-    warm_cache = config.get("warm_cache", False)
     seed = config.get("seed", 0)
     params_a = _variant_params(variant_a)
     params_b = _variant_params(variant_b)
@@ -119,9 +118,7 @@ async def run_comparisons(
             tasks.append(api.complete(client, messages_a, **params_a, temperature=0.0))
             tasks.append(api.complete(client, messages_b, **params_b, temperature=0.0))
 
-        if warm_cache:
-            return await _gather_with_warm_cache(tasks)
-        return await tqdm_asyncio.gather(*tasks)
+        return await _gather_with_warm_cache(tasks)
 
 
 def build_messages(
