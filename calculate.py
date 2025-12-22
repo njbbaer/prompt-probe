@@ -127,10 +127,11 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
     params_a = _variant_params(config.variant_a)
     params_b = _variant_params(config.variant_b)
 
+    base_rng = random.Random(config.seed)
     async with ApiClient.create() as api:
         tasks = []
-        for i in range(config.num_runs):
-            rng = random.Random(config.seed + i)
+        for _i in range(config.num_runs):
+            rng = random.Random(base_rng.getrandbits(64))
             shuffled = list(config.attributes)
             rng.shuffle(shuffled)
             messages_a = build_messages(config, shuffled, config.variant_a)
