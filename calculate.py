@@ -27,7 +27,7 @@ class ApiClient:
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
     async def complete(
         self, client: httpx.AsyncClient, messages: list, **params
-    ) -> str:
+    ) -> tuple[str, bool]:
         response = await client.post(
             f"{self._BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
@@ -37,14 +37,15 @@ class ApiClient:
         data = response.json()
         if "error" in data:
             raise Exception(data["error"])
-        if not response.extensions.get("hishel_from_cache"):
+        from_cache = response.extensions.get("hishel_from_cache", False)
+        if not from_cache:
             self.prompt_cost += data["usage"]["cost_details"][
                 "upstream_inference_prompt_cost"
             ]
             self.completion_cost += data["usage"]["cost_details"][
                 "upstream_inference_completions_cost"
             ]
-        return data["choices"][0]["message"]["content"]
+        return data["choices"][0]["message"]["content"], from_cache
 
 
 def main():
@@ -246,18 +247,41 @@ def _variant_params(variant: dict) -> dict:
     return {k: v for k, v in variant.items() if k not in exclude}
 
 
-async def _gather_with_warm_cache(tasks):
+async def _gather_with_warm_cache(tasks) -> list[str]:
+    """
+    For each variant, runs sequentially until the first real API call (hishel cache
+    miss), which warms the Anthropic cache, then runs remaining in parallel.
+    """
+    tasks_a = tasks[::2]
+    tasks_b = tasks[1::2]
+
     with tqdm_asyncio(total=len(tasks)) as pbar:
 
-        async def track(coro):
-            result = await coro
-            pbar.update(1)
-            return result
+        async def run_variant(variant_tasks):
+            results = []
+            remaining = list(variant_tasks)
 
-        tracked = [track(t) for t in tasks]
-        first = await asyncio.gather(*tracked[:2])
-        rest = await asyncio.gather(*tracked[2:])
-    return list(first) + list(rest)
+            while remaining:
+                content, from_cache = await remaining.pop(0)
+                pbar.update(1)
+                results.append(content)
+                if not from_cache:
+                    break
+
+            if remaining:
+                parallel_results = await asyncio.gather(*remaining)
+                for content, _ in parallel_results:
+                    pbar.update(1)
+                    results.append(content)
+
+            return results
+
+        results_a, results_b = await asyncio.gather(
+            run_variant(tasks_a),
+            run_variant(tasks_b),
+        )
+
+    return [x for pair in zip(results_a, results_b, strict=True) for x in pair]
 
 
 def _calc_sem(vals: list[float]) -> float:
