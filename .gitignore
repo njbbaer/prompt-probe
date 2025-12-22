@@ -1,2 +1,6 @@
-*.yml
+archive/
+.cache/
+.claude/
 *.png
+*.yml
+*.pyc

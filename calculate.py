@@ -9,7 +9,9 @@ from collections import defaultdict
 from pathlib import Path
 
 import backoff
+import hishel
 import httpx
+from hishel.httpx import AsyncCacheClient
 from jinja2 import Environment
 from ruamel.yaml import YAML
 from tqdm.asyncio import tqdm_asyncio
@@ -35,12 +37,13 @@ class ApiClient:
         data = response.json()
         if "error" in data:
             raise Exception(data["error"])
-        self.prompt_cost += data["usage"]["cost_details"][
-            "upstream_inference_prompt_cost"
-        ]
-        self.completion_cost += data["usage"]["cost_details"][
-            "upstream_inference_completions_cost"
-        ]
+        if not response.extensions.get("hishel_from_cache"):
+            self.prompt_cost += data["usage"]["cost_details"][
+                "upstream_inference_prompt_cost"
+            ]
+            self.completion_cost += data["usage"]["cost_details"][
+                "upstream_inference_completions_cost"
+            ]
         return data["choices"][0]["message"]["content"]
 
 
@@ -79,14 +82,16 @@ async def run_comparisons(
 ) -> list[str]:
     num_runs = config.get("num_runs", 1)
     warm_cache = config.get("warm_cache", False)
+    seed = config.get("seed", 0)
     params_a = _variant_params(variant_a)
     params_b = _variant_params(variant_b)
 
-    async with httpx.AsyncClient() as client:
+    async with _create_cached_client() as client:
         tasks = []
-        for _ in range(num_runs):
+        for i in range(num_runs):
+            rng = random.Random(seed + i)
             shuffled = list(config["attributes"])
-            random.shuffle(shuffled)
+            rng.shuffle(shuffled)
             cache_ttl_a = variant_a.get("cache_ttl", config.get("cache_ttl"))
             cache_ttl_b = variant_b.get("cache_ttl", config.get("cache_ttl"))
             messages_a = build_messages(config, shuffled, variant_a, cache_ttl_a)
@@ -243,6 +248,17 @@ def _render_template(text: str) -> str:
     env = Environment()
     env.globals["load"] = lambda path: Path(path).read_text()
     return env.from_string(text).render()
+
+
+def _create_cached_client() -> AsyncCacheClient:
+    Path(".cache").mkdir(exist_ok=True)
+    storage = hishel.AsyncSqliteStorage(database_path=Path(".cache/http_cache.db"))
+    policy = _BodyKeyFilterPolicy()
+    return AsyncCacheClient(storage=storage, policy=policy)
+
+
+class _BodyKeyFilterPolicy(hishel.FilterPolicy):
+    use_body_key = True
 
 
 def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dict]:
