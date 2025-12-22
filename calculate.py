@@ -6,6 +6,7 @@ import random
 import re
 import statistics
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 import backoff
@@ -48,6 +49,28 @@ class ApiClient:
         return data["choices"][0]["message"]["content"], from_cache
 
 
+@dataclass
+class Config:
+    attributes: list[str]
+    system_prompt: str
+    variant_a: dict
+    variant_b: dict
+    num_runs: int
+    seed: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Config":
+        defaults = data.get("defaults", {})
+        return cls(
+            attributes=data["attributes"],
+            system_prompt=data["system_prompt"],
+            variant_a={**defaults, **data["variant_a"]},
+            variant_b={**defaults, **data["variant_b"]},
+            num_runs=data["num_runs"],
+            seed=data.get("seed", 0),
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Path to the config file")
@@ -61,33 +84,30 @@ def main():
 
     yaml = YAML()
     with open(args.config_file) as f:
-        config = yaml.load(f)
+        data = yaml.load(f)
 
     if args.canary:
-        config["num_runs"] = 1
+        data["num_runs"] = 1
 
+    config = Config.from_dict(data)
     api = ApiClient()
-    defaults = config.get("default", {})
-    variant_a = {**defaults, **config["variant_a"]}
-    variant_b = {**defaults, **config["variant_b"]}
-    responses = asyncio.run(run_comparisons(api, config, variant_a, variant_b))
+    responses = asyncio.run(run_comparisons(api, config))
 
-    num_runs = config.get("num_runs", 1)
     results_a = defaultdict(list)
     results_b = defaultdict(list)
-    for i in range(num_runs):
+    for i in range(config.num_runs):
         for attr, val in parse_response(responses[i * 2]).items():
             results_a[attr].append(val)
         for attr, val in parse_response(responses[i * 2 + 1]).items():
             results_b[attr].append(val)
 
-    diffs = compute_diffs(config["attributes"], results_a, results_b)
+    diffs = compute_diffs(config.attributes, results_a, results_b)
     config_path = Path(args.config_file)
     output_path = print_results(
         diffs,
-        variant_a,
-        variant_b,
-        num_runs,
+        config.variant_a,
+        config.variant_b,
+        config.num_runs,
         api.prompt_cost,
         api.completion_cost,
         config_path,
@@ -98,35 +118,29 @@ def main():
         print(f"Canary mode: deleted {output_path}")
 
 
-async def run_comparisons(
-    api: ApiClient, config: dict, variant_a: dict, variant_b: dict
-) -> list[str]:
-    num_runs = config.get("num_runs", 1)
-    seed = config.get("seed", 0)
-    params_a = _variant_params(variant_a)
-    params_b = _variant_params(variant_b)
+async def run_comparisons(api: ApiClient, config: Config) -> list[str]:
+    params_a = _variant_params(config.variant_a)
+    params_b = _variant_params(config.variant_b)
 
     async with _create_cached_client() as client:
         tasks = []
-        for i in range(num_runs):
-            rng = random.Random(seed + i)
-            shuffled = list(config["attributes"])
+        for i in range(config.num_runs):
+            rng = random.Random(config.seed + i)
+            shuffled = list(config.attributes)
             rng.shuffle(shuffled)
-            messages_a = build_messages(config, shuffled, variant_a)
-            messages_b = build_messages(config, shuffled, variant_b)
+            messages_a = build_messages(config, shuffled, config.variant_a)
+            messages_b = build_messages(config, shuffled, config.variant_b)
             tasks.append(api.complete(client, messages_a, **params_a, temperature=0.0))
             tasks.append(api.complete(client, messages_b, **params_b, temperature=0.0))
 
         return await _gather_with_warm_cache(tasks)
 
 
-def build_messages(config: dict, attributes: list[str], variant: dict) -> list[dict]:
+def build_messages(config: Config, attributes: list[str], variant: dict) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
-    character_description = _render_template(
-        variant.get("character_description", config.get("character_description", ""))
-    )
-    messages = [
-        {"role": "system", "content": config["system_prompt"]},
+    character_description = _render_template(variant.get("character_description", ""))
+    messages: list[dict] = [
+        {"role": "system", "content": config.system_prompt},
         {
             "role": "user",
             "content": [
