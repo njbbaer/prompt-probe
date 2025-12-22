@@ -112,26 +112,19 @@ async def run_comparisons(
             rng = random.Random(seed + i)
             shuffled = list(config["attributes"])
             rng.shuffle(shuffled)
-            cache_ttl_a = variant_a.get("cache_ttl", config.get("cache_ttl"))
-            cache_ttl_b = variant_b.get("cache_ttl", config.get("cache_ttl"))
-            messages_a = build_messages(config, shuffled, variant_a, cache_ttl_a)
-            messages_b = build_messages(config, shuffled, variant_b, cache_ttl_b)
+            messages_a = build_messages(config, shuffled, variant_a)
+            messages_b = build_messages(config, shuffled, variant_b)
             tasks.append(api.complete(client, messages_a, **params_a, temperature=0.0))
             tasks.append(api.complete(client, messages_b, **params_b, temperature=0.0))
 
         return await _gather_with_warm_cache(tasks)
 
 
-def build_messages(
-    config: dict, attributes: list[str], variant: dict, cache_ttl: str | None = None
-) -> list[dict]:
+def build_messages(config: dict, attributes: list[str], variant: dict) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
     character_description = _render_template(
         variant.get("character_description", config.get("character_description", ""))
     )
-    cache_control = {"type": "ephemeral"}
-    if cache_ttl is not None:
-        cache_control["ttl"] = cache_ttl
     messages = [
         {"role": "system", "content": config["system_prompt"]},
         {
@@ -140,7 +133,7 @@ def build_messages(
                 {
                     "type": "text",
                     "text": character_description,
-                    "cache_control": cache_control,
+                    "cache_control": {"type": "ephemeral"},
                 }
             ],
         },
@@ -243,7 +236,7 @@ def _save_results(
 
 
 def _variant_params(variant: dict) -> dict:
-    exclude = {"label", "character_description", "cache_ttl"}
+    exclude = {"label", "character_description"}
     return {k: v for k, v in variant.items() if k not in exclude}
 
 
