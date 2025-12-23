@@ -161,7 +161,7 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
             tasks.append(api.complete(messages_a, **params_a, temperature=0.0))
             tasks.append(api.complete(messages_b, **params_b, temperature=0.0))
 
-        return await _gather_with_warm_cache(tasks), api
+        return await _run_with_cache_warmup(tasks), api
 
 
 def build_messages(
@@ -220,30 +220,36 @@ def compute_diffs(
 
     if include_overall_average and attributes:
         num_runs = len(results_a[attributes[0].key])
-        # Compute per-run averages across all attributes
-        per_run_avg_a = []
-        per_run_avg_b = []
-        per_run_avg_diff = []
-        for i in range(num_runs):
-            run_vals_a = [results_a[attr.key][i] for attr in attributes]
-            run_vals_b = [results_b[attr.key][i] for attr in attributes]
-            avg_a = statistics.mean(run_vals_a)
-            avg_b = statistics.mean(run_vals_b)
-            per_run_avg_a.append(avg_a)
-            per_run_avg_b.append(avg_b)
-            per_run_avg_diff.append(avg_b - avg_a)
-        overall = (
-            "(Overall Average)",
-            statistics.mean(per_run_avg_a),
-            _calc_sem(per_run_avg_a),
-            statistics.mean(per_run_avg_b),
-            _calc_sem(per_run_avg_b),
-            statistics.mean(per_run_avg_diff),
-            _calc_sem(per_run_avg_diff),
+        diffs.append(
+            _compute_overall_average(attributes, results_a, results_b, num_runs)
         )
-        diffs.append(overall)
 
     return diffs
+
+
+def _compute_overall_average(
+    attributes: list[Attribute], results_a: dict, results_b: dict, num_runs: int
+) -> tuple:
+    per_run_avg_a = []
+    per_run_avg_b = []
+    per_run_avg_diff = []
+    for i in range(num_runs):
+        run_vals_a = [results_a[attr.key][i] for attr in attributes]
+        run_vals_b = [results_b[attr.key][i] for attr in attributes]
+        avg_a = statistics.mean(run_vals_a)
+        avg_b = statistics.mean(run_vals_b)
+        per_run_avg_a.append(avg_a)
+        per_run_avg_b.append(avg_b)
+        per_run_avg_diff.append(avg_b - avg_a)
+    return (
+        "(Overall Average)",
+        statistics.mean(per_run_avg_a),
+        _calc_sem(per_run_avg_a),
+        statistics.mean(per_run_avg_b),
+        _calc_sem(per_run_avg_b),
+        statistics.mean(per_run_avg_diff),
+        _calc_sem(per_run_avg_diff),
+    )
 
 
 def print_results(
@@ -260,14 +266,10 @@ def print_results(
     print(f"{'Attribute':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
     print("-" * 80)
     for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
-        if attr == "(Overall Average)":
-            diff_str = f"{diff:+.3f} ± {sem_diff:.3f}"
-            val_a_str = f"{mean_a:.2f} ± {sem_a:.3f}"
-            val_b_str = f"{mean_b:.2f} ± {sem_b:.3f}"
-        else:
-            diff_str = f"{diff:+.1f} ± {sem_diff:.2f}"
-            val_a_str = f"{mean_a:.1f} ± {sem_a:.2f}"
-            val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
+        p = (3, 2) if attr == "(Overall Average)" else (1, 1)
+        diff_str = f"{diff:+.{p[0]}f} ± {sem_diff:.{p[1] + 1}f}"
+        val_a_str = f"{mean_a:.{p[1]}f} ± {sem_a:.{p[1] + 1}f}"
+        val_b_str = f"{mean_b:.{p[1]}f} ± {sem_b:.{p[1] + 1}f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     total = prompt_cost + completion_cost
     print(
@@ -320,7 +322,7 @@ def _variant_params(variant: dict) -> dict:
     return {k: v for k, v in variant.items() if k not in exclude}
 
 
-async def _gather_with_warm_cache(tasks) -> list[str]:
+async def _run_with_cache_warmup(tasks) -> list[str]:
     """
     For each variant, runs sequentially until the first real API call (hishel cache
     miss), which warms the Anthropic cache, then runs remaining in parallel.

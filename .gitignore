@@ -1,4 +1,4 @@
-archive/
+experiments/
 .cache/
 .claude/
 *.png
