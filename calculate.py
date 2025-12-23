@@ -119,10 +119,11 @@ def main():
 
     results_a = defaultdict(list)
     results_b = defaultdict(list)
+    expected_keys = {attr.key for attr in config.attributes}
     for i in range(config.num_runs):
-        for attr, val in parse_response(responses[i * 2]).items():
+        for attr, val in parse_response(responses[i * 2], expected_keys).items():
             results_a[attr].append(val)
-        for attr, val in parse_response(responses[i * 2 + 1]).items():
+        for attr, val in parse_response(responses[i * 2 + 1], expected_keys).items():
             results_b[attr].append(val)
 
     diffs = compute_diffs(
@@ -185,13 +186,15 @@ def build_messages(
     return _add_cache_padding(messages)
 
 
-def parse_response(response: str) -> dict[str, int]:
+def parse_response(response: str, expected_keys: set[str]) -> dict[str, int]:
     results = {}
     pattern = re.compile(r"^(.+?):\s*(-?\d+)$")
     for line in response.strip().split("\n"):
-        if not (match := pattern.match(line.strip())):
-            raise ValueError(f"Unable to parse line: '{line}'")
-        results[match.group(1).strip()] = int(match.group(2))
+        if match := pattern.match(line.strip()):
+            results[match.group(1).strip()] = int(match.group(2))
+    missing = expected_keys - results.keys()
+    if missing:
+        raise ValueError(f"Missing attributes: {missing}")
     return results
 
 
