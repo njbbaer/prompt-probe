@@ -80,6 +80,7 @@ class Config:
     variant_b: dict
     num_runs: int
     seed: int = 0
+    include_overall_average: bool = False
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
@@ -91,6 +92,7 @@ class Config:
             variant_b={**defaults, **data["variant_b"]},
             num_runs=data["num_runs"],
             seed=data.get("seed", 0),
+            include_overall_average=data.get("include_overall_average", False),
         )
 
 
@@ -123,7 +125,9 @@ def main():
         for attr, val in parse_response(responses[i * 2 + 1]).items():
             results_b[attr].append(val)
 
-    diffs = compute_diffs(config.attributes, results_a, results_b)
+    diffs = compute_diffs(
+        config.attributes, results_a, results_b, config.include_overall_average
+    )
     config_path = Path(args.config_file)
     output_path = print_results(
         diffs,
@@ -192,7 +196,10 @@ def parse_response(response: str) -> dict[str, int]:
 
 
 def compute_diffs(
-    attributes: list[Attribute], results_a: dict, results_b: dict
+    attributes: list[Attribute],
+    results_a: dict,
+    results_b: dict,
+    include_overall_average: bool = False,
 ) -> list[tuple]:
     diffs = []
     for attr in attributes:
@@ -207,6 +214,32 @@ def compute_diffs(
         sem_diff = _calc_sem(paired_diffs)
         diffs.append((attr.key, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
     diffs.sort(key=lambda x: abs(x[5]), reverse=True)
+
+    if include_overall_average and attributes:
+        num_runs = len(results_a[attributes[0].key])
+        # Compute per-run averages across all attributes
+        per_run_avg_a = []
+        per_run_avg_b = []
+        per_run_avg_diff = []
+        for i in range(num_runs):
+            run_vals_a = [results_a[attr.key][i] for attr in attributes]
+            run_vals_b = [results_b[attr.key][i] for attr in attributes]
+            avg_a = statistics.mean(run_vals_a)
+            avg_b = statistics.mean(run_vals_b)
+            per_run_avg_a.append(avg_a)
+            per_run_avg_b.append(avg_b)
+            per_run_avg_diff.append(avg_b - avg_a)
+        overall = (
+            "(Overall Average)",
+            statistics.mean(per_run_avg_a),
+            _calc_sem(per_run_avg_a),
+            statistics.mean(per_run_avg_b),
+            _calc_sem(per_run_avg_b),
+            statistics.mean(per_run_avg_diff),
+            _calc_sem(per_run_avg_diff),
+        )
+        diffs.append(overall)
+
     return diffs
 
 
@@ -224,9 +257,14 @@ def print_results(
     print(f"{'Attribute':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
     print("-" * 80)
     for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
-        diff_str = f"{diff:+.1f} ± {sem_diff:.2f}"
-        val_a_str = f"{mean_a:.1f} ± {sem_a:.2f}"
-        val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
+        if attr == "(Overall Average)":
+            diff_str = f"{diff:+.3f} ± {sem_diff:.3f}"
+            val_a_str = f"{mean_a:.2f} ± {sem_a:.3f}"
+            val_b_str = f"{mean_b:.2f} ± {sem_b:.3f}"
+        else:
+            diff_str = f"{diff:+.1f} ± {sem_diff:.2f}"
+            val_a_str = f"{mean_a:.1f} ± {sem_a:.2f}"
+            val_b_str = f"{mean_b:.1f} ± {sem_b:.2f}"
         print(f"{attr:<25} {diff_str:<15} {val_a_str:<20} {val_b_str:<20}")
     total = prompt_cost + completion_cost
     print(
