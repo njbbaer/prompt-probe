@@ -34,7 +34,6 @@ class ApiClient:
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
             json={"provider": {"order": ["anthropic"]}, "messages": messages, **params},
         )
-        response.raise_for_status()
         data = response.json()
         if "error" in data:
             raise Exception(data["error"])
@@ -56,8 +55,26 @@ class ApiClient:
 
 
 @dataclass
+class Attribute:
+    text: str
+    key: str
+
+    def __str__(self) -> str:
+        return f"{self.text} (key: {self.key})"
+
+    @classmethod
+    def from_config(cls, item: str | dict) -> "Attribute":
+        if isinstance(item, str):
+            return cls(text=item, key=item)
+        return cls(
+            text=item.get("text", item["key"]),
+            key=item["key"],
+        )
+
+
+@dataclass
 class Config:
-    attributes: list[str]
+    attributes: list[Attribute]
     system_prompt: str
     variant_a: dict
     variant_b: dict
@@ -68,7 +85,7 @@ class Config:
     def from_dict(cls, data: dict) -> "Config":
         defaults = data.get("defaults", {})
         return cls(
-            attributes=data["attributes"],
+            attributes=[Attribute.from_config(a) for a in data["attributes"]],
             system_prompt=data["system_prompt"],
             variant_a={**defaults, **data["variant_a"]},
             variant_b={**defaults, **data["variant_b"]},
@@ -142,9 +159,11 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
         return await _gather_with_warm_cache(tasks), api
 
 
-def build_messages(config: Config, attributes: list[str], variant: dict) -> list[dict]:
+def build_messages(
+    config: Config, attributes: list[Attribute], variant: dict
+) -> list[dict]:
     attributes_list = "\n".join(f"- {attr}" for attr in attributes)
-    character_description = _render_template(variant.get("character_description", ""))
+    character_text = _render_template(variant["character_text"])
     messages: list[dict] = [
         {"role": "system", "content": config.system_prompt},
         {
@@ -152,7 +171,7 @@ def build_messages(config: Config, attributes: list[str], variant: dict) -> list
             "content": [
                 {
                     "type": "text",
-                    "text": character_description,
+                    "text": character_text,
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -173,12 +192,12 @@ def parse_response(response: str) -> dict[str, int]:
 
 
 def compute_diffs(
-    attributes: list[str], results_a: dict, results_b: dict
+    attributes: list[Attribute], results_a: dict, results_b: dict
 ) -> list[tuple]:
     diffs = []
     for attr in attributes:
-        vals_a = results_a[attr]
-        vals_b = results_b[attr]
+        vals_a = results_a[attr.key]
+        vals_b = results_b[attr.key]
         mean_a = statistics.mean(vals_a) if vals_a else 0
         mean_b = statistics.mean(vals_b) if vals_b else 0
         sem_a = _calc_sem(vals_a)
@@ -186,7 +205,7 @@ def compute_diffs(
         paired_diffs = [b - a for a, b in zip(vals_a, vals_b, strict=False)]
         mean_diff = statistics.mean(paired_diffs) if paired_diffs else 0
         sem_diff = _calc_sem(paired_diffs)
-        diffs.append((attr, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
+        diffs.append((attr.key, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
     diffs.sort(key=lambda x: abs(x[5]), reverse=True)
     return diffs
 
@@ -256,7 +275,7 @@ def _save_results(
 
 
 def _variant_params(variant: dict) -> dict:
-    exclude = {"label", "character_description"}
+    exclude = {"label", "character_text"}
     return {k: v for k, v in variant.items() if k not in exclude}
 
 
