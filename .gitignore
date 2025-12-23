@@ -4,3 +4,4 @@ experiments/
 *.png
 *.yml
 *.pyc
+*.egg-info

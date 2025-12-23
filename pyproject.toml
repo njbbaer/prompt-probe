@@ -2,7 +2,6 @@
 name = "character-metrics"
 version = "0.1.0"
 description = "Add your description here"
-readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "backoff>=2.2.1",
@@ -21,6 +20,15 @@ dev = [
     "ruff>=0.14.10",
     "types-tqdm>=4.67.0.20250809",
 ]
+
+[project.scripts]
+cm = "character_metrics.cli:main"
+
+[tool.setuptools]
+packages = ["character_metrics"]
+
+[tool.uv]
+package = true
 
 [tool.ruff]
 line-length = 88

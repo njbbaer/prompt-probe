@@ -12,7 +12,7 @@ from jinja2 import Environment
 from ruamel.yaml import YAML
 from tqdm.asyncio import tqdm_asyncio
 
-from api_client import ApiClient
+from .api_client import ApiClient
 
 
 @dataclass
