@@ -1,5 +1,5 @@
 [project]
-name = "character-metrics"
+name = "prompt-probe"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
@@ -22,10 +22,10 @@ dev = [
 ]
 
 [project.scripts]
-cm = "character_metrics.cli:main"
+pp = "prompt_probe.cli:main"
 
 [tool.setuptools]
-packages = ["character_metrics"]
+packages = ["prompt_probe"]
 
 [tool.uv]
 package = true
