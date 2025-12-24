@@ -16,7 +16,7 @@ from .api_client import ApiClient
 
 
 @dataclass
-class Attribute:
+class Criterion:
     text: str
     key: str
 
@@ -24,7 +24,7 @@ class Attribute:
         return f"{self.text} (key: {self.key})"
 
     @classmethod
-    def from_config(cls, item: str | dict) -> "Attribute":
+    def from_config(cls, item: str | dict) -> "Criterion":
         if isinstance(item, str):
             return cls(text=item, key=item)
         return cls(
@@ -35,7 +35,7 @@ class Attribute:
 
 @dataclass
 class Config:
-    attributes: list[Attribute]
+    criteria: list[Criterion]
     system_prompt: str
     variant_a: dict
     variant_b: dict
@@ -47,7 +47,7 @@ class Config:
     def from_dict(cls, data: dict) -> "Config":
         defaults = data.get("defaults", {})
         return cls(
-            attributes=[Attribute.from_config(a) for a in data["attributes"]],
+            criteria=[Criterion.from_config(c) for c in data["criteria"]],
             system_prompt=data["system_prompt"],
             variant_a={**defaults, **data["variant_a"]},
             variant_b={**defaults, **data["variant_b"]},
@@ -81,15 +81,15 @@ def main():
 
     results_a = defaultdict(list)
     results_b = defaultdict(list)
-    expected_keys = {attr.key for attr in config.attributes}
+    expected_keys = {c.key for c in config.criteria}
     for i in range(config.num_runs):
-        for attr, val in parse_response(responses[i * 2], expected_keys).items():
-            results_a[attr].append(val)
-        for attr, val in parse_response(responses[i * 2 + 1], expected_keys).items():
-            results_b[attr].append(val)
+        for key, val in parse_response(responses[i * 2], expected_keys).items():
+            results_a[key].append(val)
+        for key, val in parse_response(responses[i * 2 + 1], expected_keys).items():
+            results_b[key].append(val)
 
     diffs = compute_diffs(
-        config.attributes, results_a, results_b, config.include_overall_average
+        config.criteria, results_a, results_b, config.include_overall_average
     )
     config_path = Path(args.config_file)
     output_path = print_results(
@@ -116,7 +116,7 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
         tasks = []
         for _i in range(config.num_runs):
             rng = random.Random(base_rng.getrandbits(64))
-            shuffled = list(config.attributes)
+            shuffled = list(config.criteria)
             rng.shuffle(shuffled)
             messages_a = build_messages(config, shuffled, config.variant_a)
             messages_b = build_messages(config, shuffled, config.variant_b)
@@ -127,9 +127,9 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
 
 
 def build_messages(
-    config: Config, attributes: list[Attribute], variant: dict
+    config: Config, criteria: list[Criterion], variant: dict
 ) -> list[dict]:
-    attributes_list = "\n".join(f"- {attr}" for attr in attributes)
+    criteria_list = "\n".join(f"- {c}" for c in criteria)
     character_text = _render_template(variant["character_text"])
     messages: list[dict] = [
         {"role": "system", "content": config.system_prompt},
@@ -143,33 +143,33 @@ def build_messages(
                 }
             ],
         },
-        {"role": "user", "content": f"Attributes:\n{attributes_list}"},
+        {"role": "user", "content": f"Criteria:\n{criteria_list}"},
     ]
     return _add_cache_padding(messages)
 
 
 def parse_response(response: str, expected_keys: set[str]) -> dict[str, int]:
     results = {}
-    pattern = re.compile(r"^(.+?):\s*(-?\d+)$")
+    pattern = re.compile(r"^(.+?)\s*(-?\d+)$")
     for line in response.strip().split("\n"):
         if match := pattern.match(line.strip()):
             results[match.group(1).strip()] = int(match.group(2))
     missing = expected_keys - results.keys()
     if missing:
-        raise ValueError(f"Missing attributes: {missing}")
+        raise ValueError(f"Missing criteria: {missing}")
     return results
 
 
 def compute_diffs(
-    attributes: list[Attribute],
+    criteria: list[Criterion],
     results_a: dict,
     results_b: dict,
     include_overall_average: bool = False,
 ) -> list[tuple]:
     diffs = []
-    for attr in attributes:
-        vals_a = results_a[attr.key]
-        vals_b = results_b[attr.key]
+    for criterion in criteria:
+        vals_a = results_a[criterion.key]
+        vals_b = results_b[criterion.key]
         mean_a = statistics.mean(vals_a) if vals_a else 0
         mean_b = statistics.mean(vals_b) if vals_b else 0
         sem_a = _calc_sem(vals_a)
@@ -177,27 +177,25 @@ def compute_diffs(
         paired_diffs = [b - a for a, b in zip(vals_a, vals_b, strict=False)]
         mean_diff = statistics.mean(paired_diffs) if paired_diffs else 0
         sem_diff = _calc_sem(paired_diffs)
-        diffs.append((attr.key, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
+        diffs.append((criterion.key, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
     diffs.sort(key=lambda x: abs(x[5]), reverse=True)
 
-    if include_overall_average and attributes:
-        num_runs = len(results_a[attributes[0].key])
-        diffs.append(
-            _compute_overall_average(attributes, results_a, results_b, num_runs)
-        )
+    if include_overall_average and criteria:
+        num_runs = len(results_a[criteria[0].key])
+        diffs.append(_compute_overall_average(criteria, results_a, results_b, num_runs))
 
     return diffs
 
 
 def _compute_overall_average(
-    attributes: list[Attribute], results_a: dict, results_b: dict, num_runs: int
+    criteria: list[Criterion], results_a: dict, results_b: dict, num_runs: int
 ) -> tuple:
     per_run_avg_a = []
     per_run_avg_b = []
     per_run_avg_diff = []
     for i in range(num_runs):
-        run_vals_a = [results_a[attr.key][i] for attr in attributes]
-        run_vals_b = [results_b[attr.key][i] for attr in attributes]
+        run_vals_a = [results_a[c.key][i] for c in criteria]
+        run_vals_b = [results_b[c.key][i] for c in criteria]
         avg_a = statistics.mean(run_vals_a)
         avg_b = statistics.mean(run_vals_b)
         per_run_avg_a.append(avg_a)
@@ -225,7 +223,7 @@ def print_results(
 ) -> Path:
     label_a = variant_a.get("label", "Variant A")
     label_b = variant_b.get("label", "Variant B")
-    print(f"{'Attribute':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
+    print(f"{'Criterion':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
     print("-" * 80)
     for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
         p = (3, 2) if attr == "(Overall Average)" else (1, 1)
@@ -261,14 +259,14 @@ def _save_results(
             "completion": completion_cost,
             "total": prompt_cost + completion_cost,
         },
-        "attributes": [
+        "criteria": [
             {
-                "name": attr,
+                "name": criterion,
                 "diff": {"mean": diff, "sem": sem_diff},
                 label_a: {"mean": mean_a, "sem": sem_a},
                 label_b: {"mean": mean_b, "sem": sem_b},
             }
-            for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs
+            for criterion, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs
         ],
     }
     yaml = YAML()

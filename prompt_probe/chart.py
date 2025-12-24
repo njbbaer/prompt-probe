@@ -15,14 +15,14 @@ def main():
     with open(sys.argv[1]) as f:
         data = yaml.load(f)
 
-    attrs = [
-        a
-        for a in data["attributes"]
-        if a["diff"]["mean"] != 0 and abs(a["diff"]["mean"]) >= 1.96 * a["diff"]["sem"]
+    criteria = [
+        c
+        for c in data["criteria"]
+        if c["diff"]["mean"] != 0 and abs(c["diff"]["mean"]) >= 1.96 * c["diff"]["sem"]
     ]
-    names = [a["name"] for a in attrs]
-    diffs = [a["diff"]["mean"] for a in attrs]
-    sems = [a["diff"]["sem"] for a in attrs]
+    names = [c["name"] for c in criteria]
+    diffs = [c["diff"]["mean"] for c in criteria]
+    sems = [c["diff"]["sem"] for c in criteria]
     _fig, ax = plt.subplots(figsize=(10, max(6, len(names) * 0.4)))
     colors = ["#a8d5ba" if d >= 0 else "#f4a9a8" for d in diffs]
     ax.barh(
