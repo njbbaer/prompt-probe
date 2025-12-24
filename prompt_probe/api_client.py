@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,7 +19,9 @@ class ApiClient:
         self.completion_cost = 0.0
         self._trace: list[dict] = []
 
-    @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
+    @backoff.on_exception(
+        backoff.expo, (httpx.HTTPError, sqlite3.InterfaceError), max_tries=3
+    )
     async def complete(self, messages: list, **params) -> tuple[str, bool]:
         request_body = {
             "provider": {"order": ["anthropic"]},
