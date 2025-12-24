@@ -118,8 +118,9 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
             rng = random.Random(base_rng.getrandbits(64))
             shuffled = list(config.criteria)
             rng.shuffle(shuffled)
-            messages_a = build_messages(config, shuffled, config.variant_a)
-            messages_b = build_messages(config, shuffled, config.variant_b)
+            shuffled_keys = [c.key for c in shuffled]
+            messages_a = build_messages(config, shuffled_keys, config.variant_a)
+            messages_b = build_messages(config, shuffled_keys, config.variant_b)
             tasks.append(api.complete(messages_a, **params_a, temperature=0.0))
             tasks.append(api.complete(messages_b, **params_b, temperature=0.0))
 
@@ -127,23 +128,34 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
 
 
 def build_messages(
-    config: Config, criteria: list[Criterion], variant: dict
+    config: Config, shuffled_keys: list[str], variant: dict
 ) -> list[dict]:
-    criteria_list = "\n".join(f"- {c}" for c in criteria)
+    criteria_defs = "\n".join(f"{c.key}: {c.text}" for c in config.criteria)
+    criteria_order = "\n".join(shuffled_keys)
     character_text = _render_template(variant["character_text"])
     messages: list[dict] = [
-        {"role": "system", "content": config.system_prompt},
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": config.system_prompt}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": character_text}],
+        },
         {
             "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": character_text,
+                    "text": f"Criteria:\n{criteria_defs}",
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
         },
-        {"role": "user", "content": f"Criteria:\n{criteria_list}"},
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": f"Order:\n{criteria_order}"}],
+        },
     ]
     return _add_cache_padding(messages)
 
