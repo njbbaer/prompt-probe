@@ -77,6 +77,7 @@ def main():
 
     config = Config.from_dict(data)
     responses, api = asyncio.run(run_comparisons(config))
+    api.write_trace()
 
     results_a = defaultdict(list)
     results_b = defaultdict(list)
