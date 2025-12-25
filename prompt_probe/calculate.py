@@ -13,6 +13,7 @@ from ruamel.yaml import YAML
 from tqdm.asyncio import tqdm_asyncio
 
 from .api_client import ApiClient
+from .chart import generate_chart
 
 
 @dataclass
@@ -96,9 +97,12 @@ def main():
         config_path,
     )
 
-    if args.canary and output_path.exists():
-        output_path.unlink()
+    if args.canary:
+        if output_path.exists():
+            output_path.unlink()
         print(f"Canary mode: deleted {output_path}")
+    else:
+        generate_chart(output_path)
 
 
 async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:

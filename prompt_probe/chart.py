@@ -10,9 +10,12 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python chart.py <results.yml>")
         sys.exit(1)
+    generate_chart(Path(sys.argv[1]))
 
+
+def generate_chart(results_path: Path):
     yaml = YAML()
-    with open(sys.argv[1]) as f:
+    with open(results_path) as f:
         data = yaml.load(f)
 
     criteria = [
@@ -66,8 +69,9 @@ def main():
     ax.invert_yaxis()
 
     plt.tight_layout()
-    output_path = Path(sys.argv[1]).with_suffix(".png")
+    output_path = results_path.with_suffix(".png")
     plt.savefig(output_path, dpi=200)
+    plt.close()
     print(f"Chart saved to {output_path}")
 
 
