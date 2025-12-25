@@ -55,20 +55,11 @@ class Config:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Path to the config file")
-    parser.add_argument(
-        "-c",
-        "--canary",
-        action="store_true",
-        help="Run single iteration and delete output",
-    )
     args = parser.parse_args()
 
     yaml = YAML()
     with open(args.config_file) as f:
         data = yaml.load(f)
-
-    if args.canary:
-        data["num_runs"] = 1
 
     config = Config.from_dict(data)
     responses, api = asyncio.run(run_comparisons(config))
@@ -96,13 +87,7 @@ def main():
         api.completion_cost,
         config_path,
     )
-
-    if args.canary:
-        if output_path.exists():
-            output_path.unlink()
-        print(f"Canary mode: deleted {output_path}")
-    else:
-        generate_chart(output_path)
+    generate_chart(output_path)
 
 
 async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
