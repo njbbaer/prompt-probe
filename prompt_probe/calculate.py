@@ -17,20 +17,14 @@ from .api_client import ApiClient
 
 @dataclass
 class Criterion:
-    text: str
     key: str
-
-    def __str__(self) -> str:
-        return f"{self.text} (key: {self.key})"
+    text: str | None = None
 
     @classmethod
     def from_config(cls, item: str | dict) -> "Criterion":
         if isinstance(item, str):
-            return cls(text=item, key=item)
-        return cls(
-            text=item.get("text", item["key"]),
-            key=item["key"],
-        )
+            return cls(key=item)
+        return cls(key=item["key"], text=item.get("text"))
 
 
 @dataclass
@@ -130,7 +124,9 @@ async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
 def build_messages(
     config: Config, shuffled_keys: list[str], variant: dict
 ) -> list[dict]:
-    criteria_defs = "\n".join(f"{c.key}: {c.text}" for c in config.criteria)
+    criteria_defs = "\n".join(
+        f"{c.key}: {c.text}" if c.text else c.key for c in config.criteria
+    )
     criteria_order = "\n".join(shuffled_keys)
     character_text = _render_template(variant["character_text"])
     messages: list[dict] = [
@@ -262,7 +258,7 @@ def _save_results(
     completion_cost: float,
     config_path: Path,
 ) -> Path:
-    output_path = config_path.with_suffix(".results.yml")
+    output_path = config_path.parent / "results" / f"{config_path.stem}.results.yml"
     results = {
         "num_runs": num_runs,
         "variants": [label_a, label_b],
