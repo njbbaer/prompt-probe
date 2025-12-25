@@ -301,10 +301,18 @@ async def _run_with_cache_warmup(tasks) -> list[str]:
                     break
 
             if remaining:
-                parallel_results = await asyncio.gather(*remaining)
-                for content, _ in parallel_results:
+
+                async def run(i, task):
+                    content, _ = await task
                     pbar.update(1)
-                    results.append(content)
+                    return i, content
+
+                indexed_tasks = [run(i, t) for i, t in enumerate(remaining)]
+                parallel_results = [None] * len(remaining)
+                for coro in asyncio.as_completed(indexed_tasks):
+                    i, content = await coro
+                    parallel_results[i] = content
+                results.extend(parallel_results)
 
             return results
 
