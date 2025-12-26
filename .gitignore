@@ -5,3 +5,4 @@ experiments/
 *.yml
 *.pyc
 *.egg-info
+!sample.yml

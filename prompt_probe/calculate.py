@@ -78,16 +78,11 @@ def main():
         config.criteria, results_a, results_b, config.include_overall_average
     )
     config_path = Path(args.config_file)
-    output_path = print_results(
-        diffs,
-        config.variant_a,
-        config.variant_b,
-        config.num_runs,
-        api.prompt_cost,
-        api.completion_cost,
-        config_path,
-    )
-    generate_chart(output_path)
+    label_a = config.variant_a.get("label", "Variant A")
+    label_b = config.variant_b.get("label", "Variant B")
+    print_results(diffs, label_a, label_b, api.prompt_cost, api.completion_cost)
+    chart_data = _build_chart_data(diffs, label_a, label_b, config.num_runs)
+    generate_chart(chart_data, config_path.with_suffix(".png"))
 
 
 async def run_comparisons(config: Config) -> tuple[list[str], ApiClient]:
@@ -211,15 +206,11 @@ def _compute_overall_average(
 
 def print_results(
     diffs: list[tuple],
-    variant_a: dict,
-    variant_b: dict,
-    num_runs: int,
+    label_a: str,
+    label_b: str,
     prompt_cost: float,
     completion_cost: float,
-    config_path: Path,
-) -> Path:
-    label_a = variant_a.get("label", "Variant A")
-    label_b = variant_b.get("label", "Variant B")
+):
     print(f"{'Criterion':<25} {'Diff':<15} {label_a:<20} {label_b:<20}")
     print("-" * 80)
     for attr, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs:
@@ -233,45 +224,19 @@ def print_results(
         f"\nCost: ${total:.4f} "
         f"(${prompt_cost:.4f} prompt + ${completion_cost:.4f} completion)"
     )
-    return _save_results(
-        diffs, label_a, label_b, num_runs, prompt_cost, completion_cost, config_path
-    )
 
 
-def _save_results(
-    diffs: list[tuple],
-    label_a: str,
-    label_b: str,
-    num_runs: int,
-    prompt_cost: float,
-    completion_cost: float,
-    config_path: Path,
-) -> Path:
-    output_path = config_path.parent / "results" / f"{config_path.stem}.results.yml"
-    results = {
+def _build_chart_data(
+    diffs: list[tuple], label_a: str, label_b: str, num_runs: int
+) -> dict:
+    return {
         "num_runs": num_runs,
         "variants": [label_a, label_b],
-        "cost": {
-            "prompt": prompt_cost,
-            "completion": completion_cost,
-            "total": prompt_cost + completion_cost,
-        },
         "criteria": [
-            {
-                "name": criterion,
-                "diff": {"mean": diff, "sem": sem_diff},
-                label_a: {"mean": mean_a, "sem": sem_a},
-                label_b: {"mean": mean_b, "sem": sem_b},
-            }
-            for criterion, mean_a, sem_a, mean_b, sem_b, diff, sem_diff in diffs
+            {"name": name, "diff": {"mean": diff, "sem": sem_diff}}
+            for name, _, _, _, _, diff, sem_diff in diffs
         ],
     }
-    yaml = YAML()
-    yaml.default_flow_style = False
-    with open(output_path, "w") as f:
-        yaml.dump(results, f)
-    print(f"Results saved to {output_path}")
-    return output_path
 
 
 def _variant_params(variant: dict) -> dict:

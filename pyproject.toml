@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-pp = "prompt_probe.cli:main"
+pp = "prompt_probe.calculate:main"
 
 [tool.setuptools]
 packages = ["prompt_probe"]

@@ -1,23 +1,10 @@
-import sys
 from pathlib import Path
 
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
-from ruamel.yaml import YAML
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python chart.py <results.yml>")
-        sys.exit(1)
-    generate_chart(Path(sys.argv[1]))
-
-
-def generate_chart(results_path: Path):
-    yaml = YAML()
-    with open(results_path) as f:
-        data = yaml.load(f)
-
+def generate_chart(data: dict, output_path: Path):
     criteria = [
         c
         for c in data["criteria"]
@@ -69,11 +56,6 @@ def generate_chart(results_path: Path):
     ax.invert_yaxis()
 
     plt.tight_layout()
-    output_path = results_path.with_suffix(".png")
     plt.savefig(output_path, dpi=200)
     plt.close()
     print(f"Chart saved to {output_path}")
-
-
-if __name__ == "__main__":
-    main()
