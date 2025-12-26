@@ -6,3 +6,4 @@ experiments/
 *.pyc
 *.egg-info
 !sample.yml
+!sample.png
