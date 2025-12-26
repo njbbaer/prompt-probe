@@ -4,7 +4,6 @@
 
 num_runs: 10
 seed: 0
-include_overall_average: true
 
 #
 # Variant definitions

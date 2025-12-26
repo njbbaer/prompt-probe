@@ -36,7 +36,6 @@ class Config:
     variant_b: dict
     num_runs: int
     seed: int = 0
-    include_overall_average: bool = False
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
@@ -48,7 +47,6 @@ class Config:
             variant_b={**defaults, **data["variant_b"]},
             num_runs=data["num_runs"],
             seed=data.get("seed", 0),
-            include_overall_average=data.get("include_overall_average", False),
         )
 
 
@@ -74,9 +72,7 @@ def main():
         for key, val in parse_response(responses[i * 2 + 1], expected_keys).items():
             results_b[key].append(val)
 
-    diffs = compute_diffs(
-        config.criteria, results_a, results_b, config.include_overall_average
-    )
+    diffs = compute_diffs(config.criteria, results_a, results_b)
     config_path = Path(args.config_file)
     label_a = config.variant_a.get("label", "Variant A")
     label_b = config.variant_b.get("label", "Variant B")
@@ -153,10 +149,7 @@ def parse_response(response: str, expected_keys: set[str]) -> dict[str, int]:
 
 
 def compute_diffs(
-    criteria: list[Criterion],
-    results_a: dict,
-    results_b: dict,
-    include_overall_average: bool = False,
+    criteria: list[Criterion], results_a: dict, results_b: dict
 ) -> list[tuple]:
     diffs = []
     for criterion in criteria:
@@ -172,7 +165,7 @@ def compute_diffs(
         diffs.append((criterion.key, mean_a, sem_a, mean_b, sem_b, mean_diff, sem_diff))
     diffs.sort(key=lambda x: abs(x[5]), reverse=True)
 
-    if include_overall_average and criteria:
+    if criteria:
         num_runs = len(results_a[criteria[0].key])
         diffs.append(_compute_overall_average(criteria, results_a, results_b, num_runs))
 
