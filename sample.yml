@@ -10,7 +10,7 @@ seed: 0
 #
 
 defaults:
-  character_text: |-
+  subject_text: |-
     Miriam Castellanos carries herself with the particular weariness of someone who has spent forty years teaching high school biology and has emerged with her sense of wonder stubbornly intact. She speaks to teenagers the way most adults speak to colleagues, which they find simultaneously terrifying and intoxicating, and she has never once asked a student what they want to be when they grow up because she considers the question a form of violence against the imagination. Her apartment smells permanently of coffee and the particular mustiness of secondhand bookstores, and she keeps a collection of Victorian-era medical illustrations that she finds genuinely beautiful in ways her sister calls concerning. She laughs rarely and means it every time, holds grudges with the patience of a glacier, and writes letters to the editor of the local newspaper with a frequency that has made her a minor legend in the opinion section. Former students sometimes recognize her in grocery stores and feel compelled to tell her things they've learned, small offerings laid at the feet of someone who once made them feel capable of understanding the world. She accepts these encounters with a gruff pleasure she would deny if accused of it, then goes home to her cat, her books, and her quiet conviction that curiosity is the only virtue that really matters.
 
 variant_a:

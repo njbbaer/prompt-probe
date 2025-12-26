@@ -108,7 +108,7 @@ def build_messages(
         f"{c.key}: {c.text}" if c.text else c.key for c in config.criteria
     )
     criteria_order = "\n".join(shuffled_keys)
-    character_text = _render_template(variant["character_text"])
+    subject_text = _render_template(variant["subject_text"])
     messages: list[dict] = [
         {
             "role": "system",
@@ -116,7 +116,7 @@ def build_messages(
         },
         {
             "role": "user",
-            "content": [{"type": "text", "text": character_text}],
+            "content": [{"type": "text", "text": subject_text}],
         },
         {
             "role": "user",
@@ -233,7 +233,7 @@ def _build_chart_data(
 
 
 def _variant_params(variant: dict) -> dict:
-    exclude = {"label", "character_text"}
+    exclude = {"label", "subject_text"}
     return {k: v for k, v in variant.items() if k not in exclude}
 
 
