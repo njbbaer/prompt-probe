@@ -36,7 +36,9 @@ def generate_chart(data: dict, output_path: Path):
             fontsize=8,
             path_effects=outline,
         )
-    max_abs = max(abs(d) + s for d, s in zip(diffs, sems, strict=False)) * 1.1
+    max_abs = (
+        max(abs(d) + s for d, s in zip(diffs, sems, strict=False)) * 1.1 if diffs else 1
+    )
     ax.set_xlim(-max_abs, max_abs)
     ax.set_xlabel("Difference (B - A)")
     ax.annotate(
