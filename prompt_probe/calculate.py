@@ -4,6 +4,7 @@ import math
 import random
 import re
 import statistics
+import subprocess
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -290,8 +291,39 @@ def _calc_sem(vals: list[float]) -> float:
 
 def _render_template(text: str) -> str:
     env = Environment()
-    env.globals["load"] = lambda path: Path(path).read_text()
+    env.globals["load"] = _load_file
     return env.from_string(text).render()
+
+
+def _load_file(path: str, rev: str | None = None) -> str:
+    if rev is None:
+        return Path(path).read_text()
+    return _load_file_from_git(path, rev)
+
+
+def _load_file_from_git(path: str, rev: str) -> str:
+    p = Path(path).resolve()
+    repo_root = subprocess.run(
+        ["git", "-C", str(p.parent), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    rel = p.relative_to(repo_root)
+    commit = subprocess.run(
+        ["git", "-C", repo_root, "log", "--format=%H", "-1", rev, "--", str(rel)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    if not commit:
+        raise FileNotFoundError(f"{p.name} not found in git history at {rev}")
+    return subprocess.run(
+        ["git", "-C", repo_root, "show", f"{commit}:{rel}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
 
 
 def _add_cache_padding(messages: list[dict], min_tokens: int = 6000) -> list[dict]:
