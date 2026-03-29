@@ -64,6 +64,30 @@ criteria:
 
 Each variant is evaluated `num_runs` times on all criteria. The tool calculates mean scores, standard error, and paired differences between variants.
 
+### Templating
+
+The `subject_text` field supports Jinja2 templating. A `load()` function is provided for inlining external files:
+
+```yaml
+variant_a:
+  subject_text: |-
+    {{ load('path/to/file.md') }}
+```
+
+Pass `rev` to load from git history (hash, branch, tag, `HEAD~1`, etc.):
+
+```yaml
+variant_a:
+  label: original
+  subject_text: |-
+    {{ load('path/to/file.md', rev='HEAD~1') }}
+
+variant_b:
+  label: modified
+  subject_text: |-
+    {{ load('path/to/file.md') }}
+```
+
 ## Sample Experiment
 
 The included `sample.yml` compares how Claude Haiku and Claude Sonnet rate a fictional character description on the 45 granular facets of the **Abridged Big Five-Dimensional Circumplex (AB5C)** personality model, traits like gregariousness, empathy, and creativity.
