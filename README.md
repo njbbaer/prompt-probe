@@ -1,6 +1,6 @@
 # Prompt Probe
 
-Prompt Probe compares how AI models perceive prompts by rating content on defined criteria across repeated evaluations.
+Prompt Probe compares how AI models perceive prompts by repeatedly rating content on defined criteria and calculating statistical measures to identify meaningful differences.
 
 ## What It's For
 
@@ -64,6 +64,16 @@ criteria:
 
 Each variant is evaluated `num_runs` times on all criteria. The tool calculates mean scores, standard error, and paired differences between variants.
 
+### Criteria Definitions
+
+If a criteria name is not self-explanatory, you can provide a definition in the `text` field:
+
+```yaml
+criteria:
+  - key: trait
+    text: A description of what trait means
+```
+
 ### Templating
 
 The `subject_text` field supports Jinja2 templating. A `load()` function is provided for inlining external files:
@@ -73,6 +83,8 @@ variant_a:
   subject_text: |-
     {{ load('path/to/file.md') }}
 ```
+
+#### Loading from Git History
 
 Pass `rev` to load from git history (hash, branch, tag, `HEAD~1`, etc.):
 
